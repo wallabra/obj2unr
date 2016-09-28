@@ -1,256 +1,249 @@
-#include "3ds2unr.h"
+#include <iostream>
+#include <vector>
+#include <fstream>
+#include <cstdlib>
+#include <cstring>
 
+#include "mesh.hpp"
+#include "export.cpp"
+#include "ssplit.cpp"
 
-const char RegistryPath[] = "Software\\Legend Entertainment\\3ds2unr";
+using std::cout;
+using std::cin;
+using std::vector;
+using std::string;
+using std::pair;
+using std::ifstream;
+using std::stringstream;
+using std::strcmp;
 
-
-//===========================================================================
-static void    Add3DSFileToModel( const char* FileName, cUnrealModel* Model );
-static string  GetBaseName( int argc, char* argv[], int* CurArg );
-static void    GetProjectDirectory();
-static void    SetProjectDirectory();
-static void    Usage();    // doesn't return!
-
-
-//===========================================================================
-string          gBaseName;
-string          gProjectDirectory;
-cUnrealModel    gModel;
-
-
-//===========================================================================
-int main( int argc, char* argv[] )
+struct stats
 {
-    bool ShowCopyright = true;
+    unsigned int parsedlines;
+    unsigned int parsedverts;
+    unsigned int parseduvs;
+    unsigned int parsedfaces;
+    unsigned int totallines;
+};
 
-    // Parse options
-    int CurArg;
-    for( CurArg = 1; CurArg < argc; ++CurArg ) {
-        if( *argv[ CurArg ] == '-' ) {
+bool parseObjLine(string line, mesh* out, stats* out_stats)
+{
+    face newface;
+    vector<double> curd;
+    vector<string> pieces;
+    string cur = "";
 
-            if( !stricmp( argv[ CurArg ], "-setproj" ) ) {
-                SetProjectDirectory();
-                exit( 0 );
-
-            } else if (!stricmp( argv[ CurArg ], "-c" ) ) {
-                ShowCopyright = false;
-
-            } else {
-                Usage();
-            }
-        } else {
-            break;  // done with options
+    // Split lines with space delimiter
+    for ( unsigned int i = 0; i < line.size(); i++ )
+    {
+        if ( line[i] == ' ' )
+        {
+            pieces.push_back(cur);
+            cur = "";
         }
+
+        else
+            cur += line[i];
     }
 
-    if( ShowCopyright ) {
-        printf( "3ds2unr V%s\n", Version );
-        printf( "Copyright (C) 1998 Legend Entertainment Co.  All Rights Reserved.\n" );
+    if ( cur != "" )
+        pieces.push_back(cur);
+
+    // Check if vertex; if so, append to mesh vertex list
+    if ( line.find("v ") == 0 )
+    {
+        if ( pieces.size() < 4 )
+            return false;
+
+        for ( unsigned int i = 0; i < 3; i++ )
+            curd.push_back(strtod(pieces[i + 1].c_str(), 0));
+
+        out->vertices.push_back(curd);
+
+        out_stats->parsedverts++;
+        return true;
     }
 
-    GetProjectDirectory();
+    // Check if texture UV vertex too
+    else if ( line.find("vt") == 0 )
+    {
+        if ( pieces.size() < 3 )
+            return false;
 
-    if( argc - CurArg < 1 )
-        Usage();
+        for ( unsigned int i = 0; i < 2; i++ )
+            curd.push_back(strtod(pieces[i + 1].c_str(), 0));
 
-    // Parse BaseName
-    gBaseName = GetBaseName( argc, argv, &CurArg );
+        out->uv.push_back(curd);
 
-    if( argc - CurArg < 1 )
-        Usage();
+        out_stats->parseduvs++;
+        return true;
+    }
 
-    try {
-        // Process 3DS files
-        for( ; CurArg < argc; ++CurArg ) {
+    //...and for faces
+    else if ( line.find("f") == 0 )
+    {
+        if ( pieces.size() < 4 )
+            return false;
 
-            WIN32_FIND_DATA FindData;
-            HANDLE FindH = ::FindFirstFile( argv[ CurArg ], &FindData );
+        vector< vector<int> > indexes;
+        vector<string> indexlist;
+        string curr = "";
 
-            if( FindH != INVALID_HANDLE_VALUE ) {
+        for ( unsigned int i = 1; i < pieces.size(); i++ )
+        {
+            indexlist.clear();
+            curr = "";
 
-                Add3DSFileToModel( FindData.cFileName, &gModel );
-                while( ::FindNextFile( FindH, &FindData ) ) {
-                    Add3DSFileToModel( FindData.cFileName, &gModel );
+            for ( unsigned int j = 0; j < pieces[i].size(); j++ )
+            {
+                if ( pieces[i][j] == '/' )
+                {
+                    indexlist.push_back(curr);
+                    curr = "";
                 }
 
-                if( ::GetLastError() != ERROR_NO_MORE_FILES )
-                    throw cxFile3DS( "error accessing file" );
-
-                ::FindClose( FindH );
-
-            } else { 
-                throw cxFile3DS( "can't find file" );
-            }
-        }
-
-        // Create Unreal files
-        if( gModel.GetNumPolygons() > 0 )
-            gModel.Write( gProjectDirectory, gBaseName );
-    }
-    catch( const cxFile3DS& e ) {
-        printf( "%s: %s\n", argv[ CurArg ], e.what() );
-    }
-    catch( ... ) {
-        printf( "%s: got unknown exception\n", argv[ CurArg ] );
-    }
-
-    return 0;
-}
-
-//===========================================================================
-static void Add3DSFileToModel( const char* FileName, cUnrealModel* Model )
-{
-    cFile3DS            CurFile( FileName );
-    string              SeqName = FileName;
-
-    SeqName.erase( SeqName.find_last_of("."), SeqName.size() );
-    Model->NewSequence( SeqName.c_str(), CurFile.GetNumFrames() );
-
-    for( int i = 0; i < CurFile.GetNumFrames(); ++i ) { 
-        bool FoundBadCoord = false;
-        
-        cFile3DS::cXYZList::const_iterator CurVertex = CurFile.BeginXYZ( i );
-        cFile3DS::cXYZList::const_iterator EndVertex = CurFile.EndXYZ( i );
-    
-        while( CurVertex != EndVertex ) {
-            Model->AddVertex( CurVertex->X, CurVertex->Y, CurVertex->Z );
-
-            if( !FoundBadCoord ) {
-                if( CurVertex->X <= -128.0 || 128.0 <= CurVertex->X ||
-                    CurVertex->Y <= -128.0 || 128.0 <= CurVertex->Y ||
-                    CurVertex->Z <= -128.0 || 128.0 <= CurVertex->Z ) {
-                    printf( "warning: %s: bad coordinate %f,%f,%f\n",
-                            FileName,
-                            CurVertex->X, CurVertex->Y, CurVertex->Z );
-                    FoundBadCoord = true;
-                }
+                else
+                    curr += pieces[i][j];
             }
 
-            ++CurVertex;
+            if ( curr != "" )
+            {
+                indexlist.push_back(curr);
+            }
+
+            vector<int> new_index;
+
+            new_index.push_back(atoi(indexlist[0].c_str()));
+            new_index.push_back(atoi(indexlist[1].c_str()));
+
+            indexes.push_back(new_index);
         }
+
+        for ( int i = 0; i < 3; i++ )
+        {
+            newface.vertices[i] = indexes[i][0];
+            newface.uv[i] = indexes[i][1];
+        }
+
+        out->faces.push_back(newface);
+
+        out_stats->parsedfaces++;
+        return true;
     }
 
-    // Only add the faces to the model once, for the first anim sequence
-    if( Model->GetNumPolygons() == 0 ) {
-        cFile3DS::cFaceList::const_iterator CurFace = CurFile.BeginFace();
-        cFile3DS::cFaceList::const_iterator EndFace = CurFile.EndFace();
-
-        while( CurFace != EndFace ) {
-            cFile3DS::Face F = *CurFace;
-            Model->AddPolygon( cUnrealPolygon( F.V0, F.V1, F.V2,
-                                               F.Type, 
-                                               F.V0U, F.V0V,
-                                               F.V1U, F.V1V,
-                                               F.V2U, F.V2V,
-                                               F.TextureNum ) );
-            ++CurFace;
-        }
-
-        for( int TexNum = 0; TexNum < 10; ++TexNum ) {
-            string TexName = CurFile.GetTextureName( TexNum );
-            if( !TexName.empty() )
-                Model->AddTexture( TexNum, TexName );
-        }
-    }
+    return false;
 }
 
-//===========================================================================
-static string GetBaseName( int argc, char* argv[], int* CurArg )
+int main(int argc, char* argv[])
 {
-    char    DirStr[_MAX_DIR];
-    char    DriveStr[_MAX_DRIVE];
-    char    ExtStr[_MAX_EXT];
-    char    NameStr[_MAX_FNAME];
+    anim animation;
+    mesh model;
+    stats statistic;
 
-    _splitpath( argv[ *CurArg ], DriveStr, DirStr, NameStr, ExtStr );
+    // Title :3
+    cerr << "===================================\nOBJ2UNR: Wavefront Converter for Unreal Engine 1\n\n   - by Gustavo6046 (Gustavo R. Rehermann)\n===================================\n\n";
 
-    int SpanLen = strcspn( argv[ *CurArg ], "?*" );
-    bool HasWildcards =  SpanLen != strlen( argv[ *CurArg ] );
+    if ( argc < 4 )
+    {
+        if ( argc > 1 && strcmp(argv[1], "-txt") == 0 )
+        {
+            cerr << "The framelist (text file of any extension passed through stdin) must contain the relative or absolute path of each .obj file used as frames for the model.\ne.g.:\n\na.obj\nb.obj\nc.obj\n\nwould import three frames:\n\n1 -> a.obj\n2 -> b.obj\n3 -> c.obj\n\nin the order they have been put in the .txt project. You can use third-party tools to automate the task of creating the .txt file :^)\n     -Gustavo\n";
 
-    // If the current arg has no funny stuff (drive/dir names, wildcards)
-    // then assume it's a class name.
-    if( !*DriveStr && !*DirStr && !*ExtStr && !HasWildcards ) {
-        ++*CurArg;
-
-    } else { // user didn't provide a class name.  Intentionally?
-
-        // If multiple files or wildcards given, user probably just forgot
-        if( argc - *CurArg > 1 || HasWildcards ) {
-            if( HasWildcards ) // don't use '*' as default name!
-                strcpy( NameStr, "Junk" );
-
-            string NameStrCopy = NameStr;
-            printf( "Class name [%s]? ", NameStr );
-            fgets( NameStr, _MAX_FNAME, stdin );
-
-            if( NameStr[ strlen( NameStr ) - 1 ] == '\n' )
-                NameStr[ strlen( NameStr ) - 1 ] = '\0';
-
-            if( !*NameStr ) // empty string? use default
-                strcpy( NameStr, NameStrCopy.c_str() );
+            return 0;
         }
-        // else only one file name, no wildcards -- use it as base name
+
+        cerr << "Syntax: obj2unr *aniv name* *data name* *name of .txt file; see `obj2unr -txt` for more*\n";
+
+        return 4;
     }
 
-    return NameStr;
-}
+    string fnam;
+    string line;
 
-//===========================================================================
-static void GetProjectDirectory()
-{
-    char Buffer[MAX_PATH];
+    ifstream otxt;
+    otxt.open(argv[3]);
+    std::getline(otxt, fnam);
 
-    cRegistry   RootReg( RegistryPath );
-    RootReg.GetValue( "ProjDir", Buffer, MAX_PATH );
+    ifstream currfile;
+    currfile.open(fnam.c_str());
 
-    // No registry set?
-    if( !*Buffer ) {
-        SetProjectDirectory();
-        RootReg.GetValue( "ProjDir", Buffer, MAX_PATH );
-        if( !*Buffer ) {
-            printf( "No project directory found -- exiting\n" );
-            exit( 0 );
+    for (; std::getline(otxt, fnam) && currfile; )
+    {
+        // clean statistics
+        statistic.parsedlines = 0;
+        statistic.parsedverts = 0;
+        statistic.parseduvs = 0;
+        statistic.parsedfaces = 0;
+        statistic.totallines = 0;
+
+        // parse each of these FREAKING LINES
+        for (; std::getline(currfile, line);  )
+        {
+            if ( parseObjLine(line, &model, &statistic) )
+                statistic.parsedlines++;
+
+            statistic.totallines++;
         }
+
+        // add frame to animation
+        animation.frames.push_back(model);
+
+        if ( animation.frames.size() < 2 )
+            animation.polys = model.faces;
+
+        // log statistics
+        cerr << "Imported model '" << fnam << "': Parsed " << statistic.totallines << " lines (" << statistic.totallines - statistic.parsedlines << " lines skipped), with " << statistic.parsedverts << " vertices, " << statistic.parseduvs << " UV coordinates and " << statistic.parsedfaces << " faces.\n";
+
+        // open new file
+        currfile.close();
+        currfile.open(fnam.c_str());
     }
 
-    gProjectDirectory = Buffer;
-}
+    currfile.close();
 
-//===========================================================================
-static void SetProjectDirectory()
-{
-    char            Buffer[_MAX_PATH + 1];
-    BROWSEINFO      bi;
-    ::ZeroMemory( &bi, sizeof bi );
-    bi.lpszTitle      = "Choose Project Directory for 3ds2unr";
-    bi.pszDisplayName = &Buffer[ 0 ];
-    bi.ulFlags        = BIF_RETURNONLYFSDIRS;
+    if ( animation.frames.size() <= 0 )
+    {
+        cerr << "Error: Invalid model imported! (No imported frames detected!)";
 
-    LPITEMIDLIST    pItemIDList;
-    if( ( pItemIDList = ::SHBrowseForFolder( &bi ) ) != 0 )
-        if( ::SHGetPathFromIDList( pItemIDList, Buffer ) ) {
-            cRegistry RootReg( RegistryPath );
-            RootReg.SetValue( "ProjDir", Buffer );
+        return 1;
+    }
 
-            printf( "Project directory is now `%s'\n", Buffer );
+    if ( animation.polys.size() <= 0 )
+    {
+        cerr << "Error: Invalid model imported! (No polygons!)";
 
-            string NewDirPath = Buffer;
-            NewDirPath += "\\";
-            NewDirPath += "Models";
-            ::CreateDirectory( NewDirPath.c_str(), 0 );
+        return 2;
+    }
 
-            NewDirPath = Buffer;
-            NewDirPath += "\\";
-            NewDirPath += "Classes";
-            ::CreateDirectory( NewDirPath.c_str(), 0 );
-        }
-}
+    if ( animation.frames[0].vertices.size() <= 0 )
+    {
+        cerr << "Error: Invalid model imported! (No vertices in first frame!)";
 
-//===========================================================================
-static void Usage()
-{
-    puts( "usage: 3ds2unr -setproj" );
-    puts( "       3ds2unr ClassName file1.3ds file2.3ds ..." );
-    puts( "       3ds2unr ClassName.3ds" );
-    exit( 0 );
+        return 3;
+    }
+
+    for ( unsigned int i = 0; i < animation.polys.size(); i++ )
+    {
+        for ( unsigned int j = 0; j < 3; j++ )
+            if ( animation.polys[i].vertices[j] > animation.frames[0].vertices.size() )
+            {
+                cerr << "Error: Invalid model imported! (Face's vertex index out of range!)";
+
+                return 5;
+            }
+
+        for ( unsigned int j = 0; j < 2; j++ )
+            if ( animation.polys[i].uv[j] > animation.frames[0].uv.size() )
+            {
+                cerr << "Error: Invalid model imported! (Face's UV index out of range!)";
+
+                return 6;
+            }
+    }
+
+    double real_scale;
+    real_scale = 16;
+
+    export_model(&animation, argv[1], argv[2], &real_scale);
+    cerr << "Done converting model!";
 }
