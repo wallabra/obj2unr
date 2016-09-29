@@ -5,6 +5,7 @@
 #include <vector>
 #include <sstream>
 #include <cstring>
+#include <stdint.h>
 
 using std::cerr;
 using std::ofstream;
@@ -13,9 +14,9 @@ using std::stringstream;
 using std::string;
 using std::strcmp;
 
-unsigned long unreal_vertex(double coord[3])
+uint32_t unreal_vertex(double coord[3])
 {
-    unsigned long result; // allocation for any case
+    uint32_t result; // allocation for any case
 
     result =   ( int(coord[0] * 8.0) & 0x7ff ) |
             ( ( int(coord[1] * 8.0) & 0x7ff ) << 11 ) |
@@ -87,18 +88,18 @@ void export_model(anim* outmodel, char* aniv_name, char* data_name, double* osca
     faniv = fopen(aniv_name, "wb");
 
     // -header...
-    short numverts = outmodel->frames.size();
-    fwrite(&numverts, sizeof(short), 1, faniv);
+    int16_t numverts = outmodel->frames.size();
+    fwrite(&numverts, sizeof(int16_t), 1, faniv);
 
-    short framesize = header.NumVertices * sizeof(unsigned long);
-    fwrite(&framesize, sizeof(short), 1, faniv);
+    int16_t framesize = header.NumVertices * sizeof(unsigned long);
+    fwrite(&framesize, sizeof(int16_t), 1, faniv);
 
     cerr << "Wrote aniv header!\n";
 
     // -...and vertexes!
     mesh* frame;
     double coord[3];
-    unsigned long *uvert;
+    uint32_t uvert;
 
     for ( unsigned int i = 0; i < outmodel->frames.size(); i++ )
     {
