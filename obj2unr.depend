@@ -1,0 +1,47 @@
+# depslib dependency file v1.0
+1475000111 source:c:\users\gusta_000.acer\desktop\scripts\codeblocks-projects\obj2unr\export.cpp
+	"mesh.hpp"
+	"umesh.cpp"
+	<iostream>
+	<fstream>
+
+1474915482 c:\users\gusta_000.acer\desktop\scripts\codeblocks-projects\obj2unr\mesh.cpp
+
+1474933821 c:\users\gusta_000.acer\desktop\scripts\codeblocks-projects\obj2unr\mesh.hpp
+	<vector>
+
+1475165426 source:c:\users\gusta_000.acer\desktop\scripts\codeblocks-projects\obj2unr\main.cpp
+	<iostream>
+	<vector>
+	<fstream>
+	<cstdlib>
+	<cstring>
+	"mesh.hpp"
+	"export.cpp"
+
+1475167468 c:\users\gusta_000.acer\desktop\scripts\codeblocks-projects\obj2unr\export.cpp
+	"mesh.hpp"
+	"umesh.cpp"
+	<iostream>
+	<fstream>
+	<vector>
+	<sstream>
+	<cstring>
+
+1474917312 c:\users\gusta_000.acer\desktop\scripts\codeblocks-projects\obj2unr\ssplit.cpp
+	<string>
+	<sstream>
+	<vector>
+
+1474933461 source:c:\users\gusta_000.acer\desktop\scripts\codeblocks-projects\obj2unr\mesh.cpp
+	<vector>
+
+1474916994 source:c:\users\gusta_000.acer\desktop\scripts\codeblocks-projects\obj2unr\ssplit.cpp
+	<string>
+	<sstream>
+	<vector>
+
+1474996556 source:c:\users\gusta_000.acer\desktop\scripts\codeblocks-projects\obj2unr\umesh.cpp
+
+1475097191 c:\users\gusta_000.acer\desktop\scripts\codeblocks-projects\obj2unr\umesh.cpp
+

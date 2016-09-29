@@ -15,17 +15,11 @@ using std::strcmp;
 
 unsigned long unreal_vertex(double coord[3])
 {
-    unsigned long result;
+    unsigned long result; // allocation for any case
 
     result =   ( int(coord[0] * 8.0) & 0x7ff ) |
             ( ( int(coord[1] * 8.0) & 0x7ff ) << 11 ) |
             ( ( int(coord[2] * 4.0) & 0x3ff ) << 22 );
-
-    vector<void*> fmt;
-    fmt.push_back(&coord[0]);
-    fmt.push_back(&coord[1]);
-    fmt.push_back(&coord[2]);
-    fmt.push_back(&result);
 
     return result;
 }
@@ -104,7 +98,7 @@ void export_model(anim* outmodel, char* aniv_name, char* data_name, double* osca
     // -...and vertexes!
     mesh* frame;
     double coord[3];
-    unsigned long uvert;
+    unsigned long *uvert;
 
     for ( unsigned int i = 0; i < outmodel->frames.size(); i++ )
     {

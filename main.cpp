@@ -6,7 +6,6 @@
 
 #include "mesh.hpp"
 #include "export.cpp"
-#include "ssplit.cpp"
 
 using std::cout;
 using std::cin;
@@ -26,7 +25,7 @@ struct stats
     unsigned int totallines;
 };
 
-bool parseObjLine(string line, mesh* out, stats* out_stats)
+bool parseObjLine(string line, mesh* out, double scale, stats* out_stats)
 {
     face newface;
     vector<double> curd;
@@ -56,7 +55,7 @@ bool parseObjLine(string line, mesh* out, stats* out_stats)
             return false;
 
         for ( unsigned int i = 0; i < 3; i++ )
-            curd.push_back(strtod(pieces[i + 1].c_str(), 0));
+            curd.push_back(strtod(pieces[i + 1].c_str(), 0) * scale);
 
         out->vertices.push_back(curd);
 
@@ -139,6 +138,7 @@ int main(int argc, char* argv[])
     anim animation;
     mesh model;
     stats statistic;
+    double real_scale = 16;
 
     // Title :3
     cerr << "===================================\nOBJ2UNR: Wavefront Converter for Unreal Engine 1\n\n   - by Gustavo6046 (Gustavo R. Rehermann)\n===================================\n\n";
@@ -179,7 +179,7 @@ int main(int argc, char* argv[])
         // parse each of these FREAKING LINES
         for (; std::getline(currfile, line);  )
         {
-            if ( parseObjLine(line, &model, &statistic) )
+            if ( parseObjLine(line, &model, real_scale, &statistic) )
                 statistic.parsedlines++;
 
             statistic.totallines++;
@@ -241,9 +241,6 @@ int main(int argc, char* argv[])
             }
     }
 
-    double real_scale;
-    real_scale = 16;
-
-    export_model(&animation, argv[1], argv[2], &real_scale);
+    export_model(&animation, argv[1], argv[2], NULL);
     cerr << "Done converting model!";
 }
